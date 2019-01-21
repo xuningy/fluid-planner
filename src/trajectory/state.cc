@@ -50,12 +50,9 @@ template <class T> T State<T>::Vel(size_t i) const {
 template <class T> T State<T>::Yaw() const { return yaw_; }
 
 template <class T> void State<T>::print() const {
-  printf("Position: [ %.2f, %.2f, %.2f ]
-", pos_(0), pos_(1), pos_(2));
-  printf("Velocity: [ %.2f, %.2f, %.2f ]
-", vel_(0), vel_(1), vel_(2));
-  printf("Yaw : %.2f
-", yaw_);
+  printf("Position: [ %.2f, %.2f, %.2f ]\n", pos_(0), pos_(1), pos_(2));
+  printf("Velocity: [ %.2f, %.2f, %.2f ]\n", vel_(0), vel_(1), vel_(2));
+  printf("Yaw : %.2f\n", yaw_);
 }
 
 } // namespace trajectory

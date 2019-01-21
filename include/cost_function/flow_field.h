@@ -33,10 +33,10 @@ namespace cost_function {
 
 // Define grid size for the local flow field, with some default params.
 struct GridSize {
-  size_t Nx = 51;
-  size_t Ny = 51;
+  size_t Nx = 31;
+  size_t Ny = 31;
   float min_x = 0;
-  float max_x = 30;
+  float max_x = 50;
   float min_y = -15;
   float max_y = 15;
 };
@@ -46,8 +46,8 @@ struct GridSize {
 struct GP {
   unsigned int dim = 0;
   std::string cov_kernel = "CovSum( CovSEiso, CovNoise)";
-  std::vector<double> hyp_params_x;
-  std::vector<double> hyp_params_y;
+  std::vector<float> hyp_params_x;
+  std::vector<float> hyp_params_y;
 };
 
 // `FlowField` is an inherited class that learns and computes cost based on a
@@ -69,7 +69,8 @@ public:
 
   // A variation of the ComputeCost function, given waypoints position `pos` and
   // velocity `vel` each in a 3xN matrix, where N is the number of waypoints.
-  float ComputeCost(const Eigen::Matrix<float, 3, Eigen::Dynamic> &pos,
+  float ComputeCost(const Eigen::VectorXf &Z,
+                    const Eigen::Matrix<float, 3, Eigen::Dynamic> &pos,
                     const Eigen::Matrix<float, 3, Eigen::Dynamic> &vel);
 
   // Clears training examples in the two GPs.
@@ -84,8 +85,8 @@ public:
 
 private:
   // GPs representing the X and Y velocities.
-  LibgpInterface gp_x_;
-  LibgpInterface gp_y_;
+  LibgpInterface<float> gp_x_;
+  LibgpInterface<float> gp_y_;
 
   // Set of training examples.
   std::deque<trajectory::State<float>> training_examples_;

@@ -35,14 +35,11 @@ namespace data_handling {
 
 // Declare the IO formats for CSV.
 const static Eigen::IOFormat CSVFormat(Eigen::StreamPrecision,
-                                       Eigen::DontAlignCols, ",", "
-", "", "",
-                                       "", "
-");
+                                       Eigen::DontAlignCols, ",", "\n", "", "",
+                                       "", "\n");
 const static Eigen::IOFormat CSVFlatMatrixFormat(Eigen::StreamPrecision,
                                       Eigen::DontAlignCols, ",", ",", "", "",
-                                      "", "
-");
+                                      "", "\n");
 
 // Load a CSV file that contains a matrix of size M x N.
 Eigen::MatrixXf LoadCsv(const std::string &filename, int M, int N) {
@@ -98,8 +95,7 @@ void WriteWptsToFile(std::vector<trajectory::Trajectory<float>> &traj,
 void
 WriteTrajectoriesToFile(const std::vector<trajectory::Trajectory<float>> &traj,
                              std::ofstream &file) {
-  for (auto &tj : traj)
-    file << tj.Z().format(CSVFlatMatrixFormat);
+  for (auto &tj : traj) file << tj.Z().format(CSVFlatMatrixFormat);
 }
 
 // Writes an Eigen::Vector3d `pt` as a single row to file, in CSV format.
@@ -113,6 +109,16 @@ void WriteFlowFieldToFile(const Eigen::MatrixXf &Vx, const Eigen::MatrixXf &Vy,
                           std::ofstream &file) {
   file << Vx.format(CSVFlatMatrixFormat);
   file << Vy.format(CSVFlatMatrixFormat);
+}
+
+void WriteOdomToFile(const std::vector<trajectory::State<float>> &odom, std::ofstream &file) {
+  Eigen::Matrix<float, 2, Eigen::Dynamic> pos;
+  pos.resize(2, odom.size());
+  for (size_t i = 0; i < odom.size(); i++) {
+    pos(0, i) = odom[i].Pos(0);
+    pos(1, i) = odom[i].Pos(1);
+  }
+  file << pos.format(CSVFlatMatrixFormat);
 }
 
 } // namespace data_handling

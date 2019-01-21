@@ -115,8 +115,7 @@ void Trajectory<T>::GetWaypointsWorld(const float dt, MatXt *pos, MatXt *vel) {
   if (!is_transform_init_) {
     printf("[Trajectory::GetWaypointsWorld] Warning: transforms not "
            "initialized. Call SetTransform before calling "
-           "GetWaypointsWorld.
-");
+           "GetWaypointsWorld.\n");
     return;
   }
 
@@ -172,8 +171,7 @@ Trajectory<T>::Dubins(const T v, const T omega, const float t,
   } else {
     x = Trajectory<T>::Vec3t(v / omega * (sin(theta + t * omega) - sin(theta)),
                              v / omega * (-cos(theta + t * omega) + cos(theta)),
-                             t * omega) +
-        pos_prev;
+                             t * omega) + pos_prev;
   }
   return x;
 }

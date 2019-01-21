@@ -22,7 +22,7 @@ cmake_minimum_required(VERSION 2.8)
 project(fluid_planner CXX)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 ")
 
 find_package(Eigen3 3.0.1 REQUIRED)
 
@@ -47,6 +47,7 @@ add_library(${PROJECT_NAME} SHARED
             )
 
 add_executable(fluid src/main.cc)
+add_executable(test_libgp src/test_libgp_interface.cc)
 
 target_Link_libraries(fluid ${PROJECT_NAME}
                       trajectory
@@ -54,6 +55,11 @@ target_Link_libraries(fluid ${PROJECT_NAME}
                       libgp_interface
                       )
 
+target_Link_libraries(test_libgp ${PROJECT_NAME}
+                      trajectory
+                      gp
+                      libgp_interface
+                      )
 # Expose this project's public includes to other subprojects through cache variable.
 set(${PROJECT_NAME}_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/include
 CACHE INTERNAL "${PROJECT_NAME}: Include Directories" FORCE)

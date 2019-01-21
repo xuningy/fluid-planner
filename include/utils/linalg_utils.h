@@ -38,7 +38,7 @@ std::vector<T> Linspace(const T lb, const T ub, const int N) {
   T h = (ub - lb) / static_cast<T>(N - 1);
   std::vector<T> vec;
   for (int n = 0; n < N; n++) {
-    vec.push_back(lb + n * h);
+    vec.push_back(lb + n*h);
   }
   return vec;
 }

@@ -30,6 +30,8 @@ namespace su = stats_utils;
 namespace lu = linalg_utils;
 namespace vu = vector_utils;
 
+namespace pu = print_utils;
+
 namespace fluid_planner {
 
 FluidPlanner::FluidPlanner() {}
@@ -44,32 +46,7 @@ void FluidPlanner::Initialize(const PlannerProperties &pp,
   pertubation_ = Eigen::MatrixXf::Identity(tp_.num_seg * 2, tp_.num_seg * 2) *
                  pp_.sample_dev;
 
-  // Sample trajectories.
-  traj_ = SampleTrajectoriesRandom(pp.num_traj);
-
-  // Turn trajectory Z representation into a matrix. Each column represents a
-  // trajectory.
-  Eigen::MatrixXf samples(tp_.num_seg * 2, pp_.num_traj);
-  int i = 0;
-  for (auto &tr : traj_) {
-    samples.col(i) = tr.Z();
-    i++;
-  }
-
-  // Initialize GMM.
-  Gmm gmm;
-  gmm.k = pp_.k;
-  std::vector<tr::Trajectory<float>> traj_rand =
-      SampleTrajectoriesRandom(gmm.k);
-  const float weight = 1.0 / traj_rand.size();
-  for (size_t i = 0; i < pp_.k; i++) {
-    gmm.mean.push_back(traj_rand[i].Z());
-    auto cov = su::Covariance<float>(samples, traj_rand[i].Z());
-    gmm.cov.push_back(cov + pertubation_);
-    gmm.cov_sqrt.push_back((cov + pertubation_).sqrt());
-    gmm.weights.push_back(weight);
-  }
-  gmm_ = UpdateGmm(traj_, gmm);
+  pertubation_eigval_ = pertubation_.eigenvalues().real();
 }
 
 Gmm FluidPlanner::UpdateGmm(const std::vector<tr::Trajectory<float>> &traj,
@@ -95,7 +72,7 @@ Gmm FluidPlanner::UpdateGmm(const std::vector<tr::Trajectory<float>> &traj,
     Eigen::MatrixXf cov = (centered * centered.transpose()) / N;
 
     updated_gmm.k = 1;
-    updated_gmm.weights = std::vector<float>(K, 1.0 / float(K));
+    updated_gmm.weights = std::vector<float>(1, 1.0);
     updated_gmm.mean.push_back(mean);
     updated_gmm.cov.push_back(cov + pertubation_);
     updated_gmm.cov_sqrt.push_back((cov + pertubation_).sqrt());
@@ -140,8 +117,36 @@ FluidPlanner::Plan(const tr::State<float> &start, cf::CostFunction &cost_fcn) {
   float rho_quantile_cost = std::numeric_limits<float>::max();
   std::vector<tr::Trajectory<float>> elite_traj;
 
+  // Sample trajectories.
+  traj_ = SampleTrajectoriesRandom(pp_.num_traj);
+
+  // Turn trajectory Z representation into a matrix. Each column represents a
+  // trajectory.
+  // Eigen::MatrixXf samples(tp_.num_seg * 2, pp_.num_traj);
+  // int i = 0;
+  // for (auto &tr : traj_) {
+  //   samples.col(i) = tr.Z();
+  //   i++;
+  // }
+
+  // // Initialize GMM.
+  // Gmm gmm;
+  // gmm.k = pp_.k;
+  // std::vector<tr::Trajectory<float>> traj_rand =
+  //     SampleTrajectoriesRandom(gmm.k);
+  // const float weight = 1.0 / traj_rand.size();
+  // for (size_t i = 0; i < pp_.k; i++) {
+  //   gmm.mean.push_back(traj_rand[i].Z());
+  //   auto cov = su::Covariance<float>(samples, traj_rand[i].Z());
+  //   gmm.cov.push_back(cov + pertubation_);
+  //   gmm.cov_sqrt.push_back((cov + pertubation_).sqrt());
+  //   gmm.weights.push_back(weight);
+  // }
+  // gmm_ = UpdateGmm(traj_, gmm);
+
   // Go through num_iter iterations of planning.
-  for (int iter = 0; iter < pp_.num_iter; iter++) {
+  int iter;
+  for (iter = 0; iter < pp_.num_iter; iter++) {
     printf("Iter: %d ", iter);
     std::cout << std::flush;
     elite_traj.clear();
@@ -150,19 +155,32 @@ FluidPlanner::Plan(const tr::State<float> &start, cf::CostFunction &cost_fcn) {
 
     // Sample trajectories.
     printf(" Sampling trajs");
-    std::cout << std::flush;
     std::vector<tr::Trajectory<float>> sampled_traj;
     if (iter == 0)
       sampled_traj = traj_;
     else
       sampled_traj = SampleTrajectoriesGMM(gmm_, pp_.num_traj);
+      // sampled_traj = SampleTrajectoriesGMMRandom(gmm_, pp_.num_traj/2, pp_.num_traj/2);
+
+    // Debug
+    // Turn trajectory Z representation into a matrix. Each column represents a
+    // trajectory.
+    Eigen::MatrixXf samples_matrix(tp_.num_seg * 2, pp_.num_traj);
+    int i = 0;
+    for (auto &tr : traj_) {
+      samples_matrix.col(i) = tr.Z();
+      i++;
+    }
+    auto cov = su::Covariance<float>(samples_matrix);
+    // pu::print(cov, "Cov of the whole matrix");
+
 
     auto t2 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> dur = (t2 - t1);
-    printf("(%.4fs)	", dur.count());
+    printf("(%.4fs)\t", dur.count());
 
-    // Set transforms for the trajectories.
-    printf("Set Tsfms");
+    // Set transforms for the trajectories to the initial position of the sampled point, so that the trajectories can be anchored in the world frame.
+    // printf("Set Tsfms");
     std::cout << std::flush;
     Eigen::Transform<float, 3, 3> R_wb;
     R_wb = Eigen::AngleAxisf(start.Yaw(), Eigen::Vector3f::UnitZ());
@@ -173,8 +191,8 @@ FluidPlanner::Plan(const tr::State<float> &start, cf::CostFunction &cost_fcn) {
 
     auto t3 = std::chrono::high_resolution_clock::now();
 
-    dur = (t3 - t2);
-    printf("(%.4fs)	", dur.count());
+    // std::chrono::duration<float, std::milli> dur2 = (t3 - t2);
+    // printf("(%.4fms)\t", dur2.count());
 
     // Compute objective for all trajectories.
     printf("Compute cost");
@@ -183,24 +201,23 @@ FluidPlanner::Plan(const tr::State<float> &start, cf::CostFunction &cost_fcn) {
     auto t4 = std::chrono::high_resolution_clock::now();
 
     dur = (t4 - t3);
-    printf("(%.4fs)	", dur.count());
+    printf("(%.4fs)\t", dur.count());
     std::cout << std::flush;
 
     // Obtain trajectories that are below the rho-quantile cost.
     // Sort cost in ascending order.
-    printf("Sorting cost");
     std::cout << std::flush;
     std::vector<float> cost_sorted;
     std::vector<size_t> cost_sorted_idx;
     vu::Sort<float>(cost, &cost_sorted, &cost_sorted_idx);
+    //
+    // auto t5 = std::chrono::high_resolution_clock::now();
+    // dur = (t5 - t4);
+    // printf("(%.4fs)\t", dur.count());
+    // std::cout << std::flush;
+    //
+    // printf("Elite set");
 
-    auto t5 = std::chrono::high_resolution_clock::now();
-    dur = (t5 - t4);
-    printf("(%.4fs)	", dur.count());
-    std::cout << std::flush;
-
-    printf("Elite set");
-    std::cout << std::flush;
     // Enforce to select at least 2 elite trajectories.
     num_elite = 0;
     while (num_elite < 2) {
@@ -215,61 +232,101 @@ FluidPlanner::Plan(const tr::State<float> &start, cf::CostFunction &cost_fcn) {
       // If the number of trajectories are less than 2, increase the cost by 5%
       // and try it again.
       if (num_elite < 2) {
-        rho_quantile_cost += std::abs(0.05 * rho_quantile_cost);
+        std::cout << "increasing cost by 0.5% from " << rho_quantile_cost;
+        rho_quantile_cost += std::abs(0.005 * rho_quantile_cost);
+        std::cout << " to " << rho_quantile_cost << std::endl;
+
       }
     }
-    printf(", found %d", num_elite);
-    auto t6 = std::chrono::high_resolution_clock::now();
+    // if (iter == 0)
+    //   printf("Found %d elite traj with quantile cost set to max.", num_elite);
+    // else
+    //   printf("Found %d elite traj with quant_cost %.2f", num_elite, rho_quantile_cost);
 
-    dur = (t6 - t5);
-    printf("(%.4fs)	", dur.count());
-    std::cout << std::flush;
+    // auto t6 = std::chrono::high_resolution_clock::now();
+    //
+    // dur = (t6 - t4);
+    // printf("(%.4fs)\t", dur.count());
+    // std::cout << std::flush;
 
-    // Update Rho quantile cost.
+    // Update Rho quantile cost and collect the elite trajectories.
+    rho_quantile_cost =
+        cost_sorted[std::ceil(pp_.rho * (cost_sorted.size() - 1))];
+
+    std::cout << "Found lowest cost trajectories:" << std::endl;
     if (iter == 0) {
-      rho_quantile_cost =
-          cost_sorted[std::ceil(pp_.rho * (cost_sorted.size() - 1))];
+      // If it is the first iteration, set the rho_quantile_cost first, and
+      // then use that to find the elite trajectories.
       float cost = cost_sorted[0];
       size_t i = 0;
       while (cost < rho_quantile_cost) {
         elite_traj.push_back(sampled_traj[cost_sorted_idx[i]]);
         i++;
         cost = cost_sorted[i];
+        // pu::print(sampled_traj[cost_sorted_idx[i]].Z(),  std::to_string(cost));
       }
     } else {
-      // Collect all the elite trajectories.
-      for (size_t i = 0; i < num_elite; i++) {
+      // Set the elite trajectory to the first `num_elite` trajectories, found
+      // above.
+      // for (size_t i = 0; i < num_elite; i++) {
+      for (size_t i = 0; i < 5; i++) {
         elite_traj.push_back(sampled_traj[cost_sorted_idx[i]]);
+        // pu::print(sampled_traj[cost_sorted_idx[i]].Z(), std::to_string(cost_sorted[i]));
       }
-      // Update rho-quantile cost.
-      printf("Update quantile");
-      rho_quantile_cost =
-          cost_sorted[std::ceil(pp_.rho * (cost_sorted.size() - 1))];
     }
-    std::cout << "rho_quantile_cost " << rho_quantile_cost << std::endl;
+
+    if (std::isnan(rho_quantile_cost)) {
+      std::cout << "rho_quantile_cost is NAN, exiting." << std::endl;
+      pu::print(cost_sorted, "cost_sorted");
+
+      return traj_;
+    }
+
+    // Debug
+    // Turn trajectory Z representation into a matrix. Each column represents a
+    // trajectory.
+    Eigen::MatrixXf samples_matrix2(tp_.num_seg * 2, pp_.num_traj);
+    i=0;
+    for (auto &tr : traj_) {
+      samples_matrix2.col(i) = tr.Z();
+      i++;
+    }
+    cov = su::Covariance<float>(samples_matrix2);
+    // pu::print(cov, "Cov of the elite trajectories");
+
     auto t7 = std::chrono::high_resolution_clock::now();
-    dur = (t7 - t6);
-    printf("(%.4fs)	", dur.count());
+    // dur2 = (t7 - t6);
+    // printf("(%.4fms)\t", dur2.count());
+    std::cout << " Update quant_cost to " << rho_quantile_cost << " ";
 
     // Update GMMs.
-    printf("Update GMMs");
+    printf("  Update GMMs");
     std::cout << std::flush;
     gmm_ = UpdateGmm(elite_traj, gmm_);
 
+    // pu::print(gmm_.cov[0], "parameter covariance");
     // Output timing information.
     auto t8 = std::chrono::high_resolution_clock::now();
     dur = (t8 - t7);
-    printf("(%.4fs)	", dur.count());
+    printf("(%.4fs)\t", dur.count());
     dur = (t8 - t1);
-    printf("TOTAL(%.4fs)
-", dur.count());
+    printf("TOTAL(%.4fs)\n", dur.count());
+
+
+    // check Eigenvalues of the GMM covariance matrix. If the distribution has
+    // converged to a delta, break.
+    Eigen::VectorXf eigvals = gmm_.cov[0].eigenvalues().real() -
+                              pertubation_eigval_;
+
+    // std::cout << "Eigval.maxCoeff: " << eigvals.maxCoeff() << std::endl;
+    if (eigvals.maxCoeff() < 0.005) break;
   }
 
   traj_ = elite_traj;
   auto tf = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> dur = (tf - t0);
-  printf("Planner finished, took %.4fs. Exiting.
-", dur.count());
+  printf("Planner finished after %d iterations, took %.4fs. Exiting.\n",
+    iter+1, dur.count());
   return traj_;
 }
 
@@ -329,6 +386,8 @@ FluidPlanner::SampleTrajectoriesGMM(const Gmm &gmm, const int num_traj) {
     int k = (gmm.k == 1) ? 0 : k_vec[i];
     Eigen::VectorXf dev =
         su::RangeSample(-pp_.sample_dev, pp_.sample_dev, 2 * tp_.num_seg);
+    // pu::print(dev, "dev");
+    // pu::print(gmm.cov_sqrt[k] * dev, "cov_sqrt*dev");
     Eigen::VectorXf Z = gmm.mean[k] + gmm.cov_sqrt[k] * dev;
     tr::Trajectory<float> traj(Z, seg_duration_);
     trajectories.push_back(traj);

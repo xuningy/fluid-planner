@@ -150,8 +150,16 @@ T GaussianPdf(const VecXt<T> &x, const VecXt<T> &mean, const MatXt<T> &sigma) {
 // size MxN, and outputs an Eigen matrix of size MxM.
 // `samples` contains N samples of size M.
 template <typename T> MatXt<T> Covariance(const MatXt<T> &samples) {
+  int N = samples.cols();
   VecXt<T> mean = samples.rowwise().mean();
-  return Covariance(samples, mean);
+  int sample_dim = mean.size();
+  MatXt<T> centered = samples.colwise() - mean;
+  MatXt<T> cov = (centered * centered.transpose()) / N;
+
+  // Check that the sizes are correct.
+  assert(cov.rows() == sample_dim);
+  assert(cov.cols() == sample_dim);
+  return cov;
 }
 
 // Covariance computes the sample covariance for an Eigen Matrix `samples` of
@@ -185,8 +193,7 @@ MatXt<T> Covariance(const MatXt<T> &samples, const VecXt<T> &mean,
   assert(weights.size() == N);
 
   MatXt<T> centered = samples.colwise() - mean;
-  MatXt<T> weighted_centered =
-      centered.array().rowwise() * weights.transpose().array();
+  MatXt<T> weighted_centered = centered.array().rowwise() * weights.transpose().array();
   MatXt<T> cov = (centered * weighted_centered.transpose()) / weights.sum();
 
   // Check that the sizes are correct.
